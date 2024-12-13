@@ -3,7 +3,7 @@ import socket
 import playerManager
 
 
-def Main():
+def main():
 	host = "0.0.0.0"
 	port = 12345
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -15,4 +15,4 @@ def Main():
 
 
 if __name__ == '__main__':
-	Main()
+	main()
