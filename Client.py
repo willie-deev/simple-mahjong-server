@@ -20,7 +20,7 @@ class Client:
 		self.thread.start()
 
 	def sendPlayerCount(self):
-		self.sendEncryptedBytes(int.to_bytes(len(self.playerManager.players)))
+		self.sendEncryptedBytes(int.to_bytes(len(self.playerManager.clients)))
 
 	def sendPubKey(self):
 		self.socket.sendall(self.playerManager.main.keyUtils.getPublicKeyBytes())
