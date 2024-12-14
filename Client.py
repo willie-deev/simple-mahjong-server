@@ -19,8 +19,8 @@ class Client:
 		self.thread = threading.Thread(target=self.recvThread)
 		self.thread.start()
 
-	def sendPlayerCount(self, playerCount: int):
-		self.sendEncryptedBytes(int.to_bytes(playerCount))
+	def sendPlayerCount(self):
+		self.sendEncryptedBytes(int.to_bytes(len(self.playerManager.players)))
 
 	def sendPubKey(self):
 		self.socket.sendall(self.playerManager.main.keyUtils.getPublicKeyBytes())
@@ -30,7 +30,7 @@ class Client:
 		self.sendMessageRsaEncrypter = PKCS1_OAEP.new(self.clientPubKey)
 		data = self.receiveData(256)
 		self.clientAesKey = self.playerManager.main.keyUtils.decryptRsa(data)
-		self.sendEncryptedBytes(int.to_bytes(len(self.playerManager.players)))
+		self.playerManager.keyExchangedEvent.set()
 		while True:
 			receivedList = self.receiveEncryptedMessages()
 			print(receivedList)

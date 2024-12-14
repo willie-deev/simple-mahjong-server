@@ -1,23 +1,28 @@
 import socket
+import threading
 from enum import Enum
 
-import Client
+from Client import Client
 
 
 class PlayerManager:
+	keyExchangedEvent = threading.Event()
 	def __init__(self, main):
-		self.players: list[Client.Client] = []
+		self.players: list[Client] = []
 		self.main = main
 
 	def waitPlayers(self, s: socket):
 		for i in range(0, 4):
 			c, addr = s.accept()
 			print('Connected to :', addr[0], ':', addr[1])
-			player = Client.Client(c, self)
+			player = Client(c, self)
 			player.sendPubKey()
-			for _p in self.players:
-				_p.sendEncryptedBytes(int.to_bytes(len(self.players) + 1))
 			self.players.append(player)
+			self.keyExchangedEvent.wait()
+			self.keyExchangedEvent.clear()
+			for _p in self.players:
+				_p.sendPlayerCount()
+
 		print("all players connected, starting game")
 
 
