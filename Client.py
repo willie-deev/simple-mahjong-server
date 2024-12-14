@@ -1,33 +1,90 @@
 import socket
 import threading
 
+from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
+
 
 class Client:
-    socket: socket
-    thread: threading.Thread
+	socket: socket
+	thread: threading.Thread
 
-    def __init__(self, _c):
-        self.socket = _c
-        self.thread = threading.Thread(target=self.recvThread)
-        self.thread.start()
+	def __init__(self, _c, playerManager):
+		self.sendMessageRsaEncrypter = None
+		self.clientAesKey = None
+		self.playerManager = playerManager
+		self.clientPubKey = None
+		self.socket = _c
+		self.thread = threading.Thread(target=self.recvThread)
+		self.thread.start()
 
-    def sendBytes(self, message: bytes):
-        data: bytes = int(1).to_bytes(length=1) + len(message).to_bytes(length=4) + message
-        self.socket.sendall(data)
+	def sendPlayerCount(self, playerCount: int):
+		self.sendEncryptedBytes(int.to_bytes(playerCount))
 
-    def sendInt(self, message: int):
-        data: bytes = int(2).to_bytes(length=1) + int(4).to_bytes(length=4) + message.to_bytes(length=4)
-        self.socket.sendall(data)
+	def sendPubKey(self):
+		self.socket.sendall(self.playerManager.main.keyUtils.getPublicKeyBytes())
 
-    def sendStr(self, message: str):
-        data: bytes = int(3).to_bytes(length=1) + len(message.encode('utf-8')).to_bytes(length=4) + message.encode('utf-8')
-        self.socket.sendall(data)
+	def recvThread(self):
+		self.clientPubKey = RSA.importKey(self.receiveData(450))
+		self.sendMessageRsaEncrypter = PKCS1_OAEP.new(self.clientPubKey)
+		data = self.receiveData(256)
+		self.clientAesKey = self.playerManager.main.keyUtils.decryptRsa(data)
+		self.sendEncryptedBytes(int.to_bytes(len(self.playerManager.players)))
+		while True:
+			receivedList = self.receiveEncryptedMessages()
+			print(receivedList)
 
-    def recvThread(self):
-        while True:
-            data = self.socket.recv(1024)
-            if not data:
-                print(str(self.socket.getsockname()) + ' disconnected')
-                break
-            self.socket.send(data)
-        self.socket.close()
+	def sendEncryptedBytes(self, message: bytes):
+		dataLength = self.encryptMessage(int.to_bytes(1))
+		self.socket.sendall(dataLength[0])
+		self.socket.sendall(dataLength[1])
+
+		data = self.encryptMessage(message)
+		self.socket.sendall(data[0])
+		self.socket.sendall(data[1])
+
+	def sendEncryptedByteList(self, messages: list):
+		dataLength = self.encryptMessage(int.to_bytes(len(messages)))
+		self.socket.sendall(dataLength[0])
+		self.socket.sendall(dataLength[1])
+
+		for data in messages:
+			encryptedData = self.encryptMessage(data)
+			self.socket.sendall(encryptedData[0])
+			self.socket.sendall(encryptedData[1])
+
+	def receiveEncryptedMessages(self) -> list:
+		iv = self.receiveData(256)
+		message = self.receiveData(256)
+		dataLength = self.decryptReceivedMessage(iv, message)
+		messageList = list()
+		for i in range(int.from_bytes(dataLength)):
+			iv = self.receiveData(256)
+			message = self.receiveData(256)
+			data = self.decryptReceivedMessage(iv, message)
+			messageList.append(data)
+		return messageList
+
+	def encryptMessage(self, message: bytes) -> tuple[bytes, bytes]:
+		iv = get_random_bytes(16)
+		aesCipher = AES.new(self.clientAesKey, AES.MODE_CFB, iv=iv)
+		encryptedIv = self.sendMessageRsaEncrypter.encrypt(iv)
+		encryptedMessage = self.sendMessageRsaEncrypter.encrypt((aesCipher.encrypt(message)))
+		return encryptedIv, encryptedMessage
+
+	def decryptReceivedMessage(self, iv: bytes, message: bytes) -> bytes:
+		decryptedIV = self.playerManager.main.keyUtils.decryptRsa(iv)
+		aesCipher = AES.new(self.clientAesKey, AES.MODE_CFB, iv=decryptedIV)
+		rsaDecrypted = self.playerManager.main.keyUtils.decryptRsa(message)
+		return aesCipher.decrypt(rsaDecrypted)
+
+	def receiveData(self, receiveByteCount: int):
+		receivedData = self.socket.recv(receiveByteCount)
+		while len(receivedData) < receiveByteCount:
+			if not receivedData:
+				print('server disconnected')
+				self.socket.close()
+				return
+			receivedData += self.socket.recv(receiveByteCount - len(receivedData))
+		return receivedData
