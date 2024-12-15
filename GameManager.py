@@ -3,6 +3,7 @@ from collections import deque
 from random import Random
 
 import Client
+from ConfigHandler import DefaultConfig
 
 
 class GameManager:
@@ -17,7 +18,7 @@ class GameManager:
 
 	def gameInitialize(self):
 		clients: list[Client] = self.main.playerManager.clients
-		if self.main.configHandler.getBool("standard", "playerRandomOrder"):
+		if self.main.configHandler.get(DefaultConfig.SERVERSIDE_RANDOM_PLAYER_ORDER) == "True":
 			self.randomSortPlayer(clients)
 		for i in range(4):
 			client = clients[i]
