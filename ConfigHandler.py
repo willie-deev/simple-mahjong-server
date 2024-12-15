@@ -11,6 +11,7 @@ class DefaultConfig(Enum):
 	def default(self):
 		return self.value[1]
 
+
 class ConfigHandler:
 	def __init__(self, main):
 		self.main = main
