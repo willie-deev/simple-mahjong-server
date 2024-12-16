@@ -43,6 +43,7 @@ class GameManager:
 				for k in range(4):
 					cards.append(self.getCardTypeByNumber(self.takeOneCard()).name.encode())
 				client.sendEncryptedByteList(cards)
+				client.addCards(cards)
 			sleep(1)
 		sleep(1)
 

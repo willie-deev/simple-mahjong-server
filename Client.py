@@ -5,6 +5,8 @@ from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
+import CardType
+
 
 class Client:
 	socket: socket
@@ -18,6 +20,17 @@ class Client:
 		self.socket = _c
 		self.thread = threading.Thread(target=self.recvThread)
 		self.thread.start()
+		self.ownCards = list[CardType]()
+
+	def addCard(self, card: CardType):
+		self.ownCards.append(card)
+
+	def addCards(self, cards: list[CardType]):
+		for card in cards:
+			self.addCard(card)
+
+	def removeCard(self, card: CardType):
+		self.ownCards.remove(card)
 
 	def sendPlayerCount(self):
 		self.sendEncryptedBytes(int.to_bytes(len(self.playerManager.clients)))
