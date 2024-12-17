@@ -1,16 +1,14 @@
-import socket
 import threading
 
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
-import CardType
+from CardType import CardType
+from ServerActionType import ServerActionType
 
 
 class Client:
-	socket: socket
-	thread: threading.Thread
 
 	def __init__(self, _c, playerManager):
 		self.sendMessageRsaEncrypter = None
@@ -20,17 +18,33 @@ class Client:
 		self.socket = _c
 		self.thread = threading.Thread(target=self.recvThread)
 		self.thread.start()
-		self.ownCards = list[CardType]()
+		self.cards = list[CardType]()
+		self.clientReceivedCardEvent = threading.Event()
+		self.flowerCount = 0
+		self.wind = None
 
-	def addCard(self, card: CardType):
-		self.ownCards.append(card)
+	def waitForClientReceivedCard(self):
+		self.clientReceivedCardEvent.wait()
+		self.clientReceivedCardEvent.clear()
 
-	def addCards(self, cards: list[CardType]):
+	def getCardTypes(self) -> list[CardType]:
+		return self.cards
+
+	def addCardType(self, card: CardType):
+		self.cards.append(card)
+
+	def addCardTypes(self, cards: list[CardType]):
 		for card in cards:
-			self.addCard(card)
+			self.addCardType(card)
 
-	def removeCard(self, card: CardType):
-		self.ownCards.remove(card)
+	def removeCardType(self, card: CardType):
+		if card == CardType.FLOWER:
+			self.flowerCount += 1
+		self.cards.remove(card)
+
+	def removeCardTypes(self, cards: list[CardType]):
+		for card in cards:
+			self.removeCardType(card)
 
 	def sendPlayerCount(self):
 		self.sendEncryptedBytes(int.to_bytes(len(self.playerManager.clients)))
@@ -46,7 +60,12 @@ class Client:
 		self.playerManager.keyExchangedEvent.set()
 		while True:
 			receivedList = self.receiveEncryptedMessages()
+			self.clientReceivedCardEvent.set()
 			print(receivedList)
+
+	def sendServerActionType(self, serverActionType: ServerActionType, messages: list):
+		newList = [serverActionType.name.encode()] + messages
+		self.sendEncryptedByteList(newList)
 
 	def sendEncryptedBytes(self, message: bytes):
 		dataLength = self.encryptMessage(int.to_bytes(1))

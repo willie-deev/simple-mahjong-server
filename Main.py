@@ -1,3 +1,4 @@
+import atexit
 import socket
 
 from ConfigHandler import ConfigHandler
@@ -15,6 +16,7 @@ class Main:
 		self.configHandler = ConfigHandler(self)
 
 	def main(self):
+		atexit.register(self.closeSockets)
 		print(self.gameManager.cards)
 		self.configHandler.setDefaults()
 		host = "0.0.0.0"
@@ -24,6 +26,9 @@ class Main:
 		self.socket.listen()
 		print("socket is listening")
 		self.playerManager.waitClients(self.socket)
+		self.socket.close()
+
+	def closeSockets(self):
 		self.socket.close()
 
 
