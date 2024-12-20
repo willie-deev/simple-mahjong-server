@@ -6,3 +6,4 @@ class ServerActionType(Enum):
 	START_SEND_CARDS = 1
 	START_FLOWER_REPLACEMENT = 2
 	FLOWER_COUNT = 3
+	SEND_CARD = 4

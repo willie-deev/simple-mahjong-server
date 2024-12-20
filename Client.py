@@ -25,12 +25,14 @@ class Client:
 		self.flowerCount = 0
 		self.wind = None
 
-	def waitForClientReceivedCard(self):
-		self.clientReceivedCardEvent.wait()
+	def waitForClientReceivedCard(self, timeout=1):
+		if not self.clientReceivedCardEvent.wait(timeout):
+			raise Exception("client received card event timeout")
 		self.clientReceivedCardEvent.clear()
 
-	def waitForClientReceivedFlowerCount(self):
-		self.clientReceivedFlowerCount.wait()
+	def waitForClientReceivedFlowerCount(self, timeout=1):
+		if not self.clientReceivedFlowerCount.wait(timeout):
+			raise Exception("client received flower count timeout")
 		self.clientReceivedFlowerCount.clear()
 
 	def getCardTypes(self) -> list[CardType]:

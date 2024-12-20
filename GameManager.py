@@ -12,6 +12,7 @@ from Winds import Winds
 
 class GameManager:
 	def __init__(self, main):
+		self.clients = None
 		self.main = main
 		self.cards: deque[int] = deque()
 		for i in range(144):
@@ -29,11 +30,11 @@ class GameManager:
 					self.cardNumberTypeList.append(cardType)
 
 	def gameInitialize(self):
-		clients: list[Client] = self.main.playerManager.clients
+		self.clients: list[Client] = self.main.playerManager.clients
 		if self.main.configHandler.get(DefaultConfig.SERVERSIDE_RANDOM_PLAYER_ORDER) == "True":
-			self.randomSortPlayer(clients)
+			self.randomSortPlayer(self.clients)
 		for i in range(4):
-			client = clients[i]
+			client = self.clients[i]
 			for wind in Winds:
 				if wind.value == i:
 					client.sendServerActionType(ServerActionType.CHANGE_WIND, [wind.name.encode()])
@@ -41,16 +42,19 @@ class GameManager:
 		self.waitForAllClientsReceiveCard()
 		for i in range(4):
 			for j in range(4):
-				client = clients[j]
+				client = self.clients[j]
 				self.sendRandomCards(client, 4, ServerActionType.START_SEND_CARDS, False)
 			self.waitForAllClientsReceiveCard()
 			sleep(1)
-		self.allFlowerReplacement(clients)
+		self.allFlowerReplacement(self.clients)
+		print("mainGame")
 		self.mainGame()
 		print("end")
+
 	def mainGame(self):
 		while True:
-			pass
+			for client in self.clients:
+				self.sendRandomCards(client, 1, ServerActionType.SEND_CARD)
 
 	def sendRandomCards(self, client: Client, cardCount: int, serverActionType: ServerActionType, waitForClientReceive=True):
 		cardTypes = list[CardType]()
