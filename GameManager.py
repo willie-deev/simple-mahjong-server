@@ -42,18 +42,22 @@ class GameManager:
 		for i in range(4):
 			for j in range(4):
 				client = clients[j]
-				self.sendRandomCards(client, 4, False)
+				self.sendRandomCards(client, 4, ServerActionType.START_SEND_CARDS, False)
 			self.waitForAllClientsReceiveCard()
 			sleep(1)
-		sleep(1)
 		self.allFlowerReplacement(clients)
+		self.mainGame()
+		print("end")
+	def mainGame(self):
+		while True:
+			pass
 
-	def sendRandomCards(self, client: Client, cardCount: int, waitForClientReceive=True):
+	def sendRandomCards(self, client: Client, cardCount: int, serverActionType: ServerActionType, waitForClientReceive=True):
 		cardTypes = list[CardType]()
 		for k in range(cardCount):
 			cardType = self.getCardTypeByNumber(self.takeOneCard())
 			cardTypes.append(cardType)
-		self.sendCardTypeList(client, cardTypes)
+		self.sendCardTypeList(client, cardTypes, serverActionType)
 		client.addCardTypes(cardTypes)
 		if waitForClientReceive:
 			client.waitForClientReceivedCard()
@@ -61,7 +65,7 @@ class GameManager:
 	def allFlowerReplacement(self, clients: list[Client]):
 		while True:
 			for client in clients:
-				self.flowerReplacement(client, False)
+				self.flowerReplacement(client, ServerActionType.START_FLOWER_REPLACEMENT, False)
 			self.waitForAllClientsReceiveCard()
 			noFlower = True
 			for client in clients:
@@ -71,10 +75,11 @@ class GameManager:
 				for client in clients:
 					for client2 in clients:
 						client.sendServerActionType(ServerActionType.FLOWER_COUNT, [client2.wind.name.encode(), client2.flowerCount.to_bytes()])
-				self.waitForAllClientsReceiveCard()
+				self.waitForAllClientsReceiveFlowerCount()
 				return
+			self.waitForAllClientsReceiveCard()
 
-	def flowerReplacement(self, client: Client, waitForClientReceive=True):
+	def flowerReplacement(self, client: Client, serverActionType: ServerActionType, waitForClientReceive=True):
 		newCardTypes = list[CardType]()
 		flowerCards = list[CardType]()
 		for cardType in client.getCardTypes():
@@ -82,7 +87,7 @@ class GameManager:
 				flowerCards.append(cardType)
 				newCardType = self.getCardTypeByNumber(self.takeOneCard())
 				newCardTypes.append(newCardType)
-		self.sendCardTypeList(client, newCardTypes)
+		self.sendCardTypeList(client, newCardTypes, serverActionType)
 		client.removeCardTypes(flowerCards)
 		client.addCardTypes(newCardTypes)
 		if waitForClientReceive:
@@ -91,16 +96,21 @@ class GameManager:
 	def cardTypeToBytes(self, cardType: CardType):
 		return cardType.name.encode()
 
-	def sendCardTypeList(self, client: Client, cardTypeList: list[CardType]):
+	def sendCardTypeList(self, client: Client, cardTypeList: list[CardType], serverActionType: ServerActionType):
 		cardBytesList = []
 		for cardType in cardTypeList:
 			cardBytesList.append(self.cardTypeToBytes(cardType))
-		client.sendServerActionType(ServerActionType.START_SEND_CARDS, cardBytesList)
+		client.sendServerActionType(serverActionType, cardBytesList)
 
 	def waitForAllClientsReceiveCard(self):
 		print("waiting for all clients received cards")
 		for client in self.main.playerManager.clients:
 			client.waitForClientReceivedCard()
+
+	def waitForAllClientsReceiveFlowerCount(self):
+		print("waiting for all clients received flower count")
+		for client in self.main.playerManager.clients:
+			client.waitForClientReceivedFlowerCount()
 
 	def getCardTypeByNumber(self, number: int):
 		return self.cardNumberTypeList[number]

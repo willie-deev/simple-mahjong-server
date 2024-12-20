@@ -5,6 +5,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
 from CardType import CardType
+from ClientActionType import ClientActionType
 from ServerActionType import ServerActionType
 
 
@@ -20,12 +21,17 @@ class Client:
 		self.thread.start()
 		self.cards = list[CardType]()
 		self.clientReceivedCardEvent = threading.Event()
+		self.clientReceivedFlowerCount = threading.Event()
 		self.flowerCount = 0
 		self.wind = None
 
 	def waitForClientReceivedCard(self):
 		self.clientReceivedCardEvent.wait()
 		self.clientReceivedCardEvent.clear()
+
+	def waitForClientReceivedFlowerCount(self):
+		self.clientReceivedFlowerCount.wait()
+		self.clientReceivedFlowerCount.clear()
 
 	def getCardTypes(self) -> list[CardType]:
 		return self.cards
@@ -60,8 +66,16 @@ class Client:
 		self.playerManager.keyExchangedEvent.set()
 		while True:
 			receivedList = self.receiveEncryptedMessages()
-			self.clientReceivedCardEvent.set()
-			print(receivedList)
+			clientActionType = None
+			for actionType in ClientActionType:
+				if receivedList[0].decode() == actionType.name:
+					clientActionType = actionType
+			match clientActionType:
+				case ClientActionType.RECEIVED_CARDS:
+					self.clientReceivedCardEvent.set()
+					print(receivedList)
+				case ClientActionType.RECEIVED_FLOWER_COUNT:
+					self.clientReceivedFlowerCount.set()
 
 	def sendServerActionType(self, serverActionType: ServerActionType, messages: list):
 		newList = [serverActionType.name.encode()] + messages
