@@ -37,7 +37,7 @@ class GameManager:
 			client = self.clients[i]
 			for wind in Winds:
 				if wind.value == i:
-					client.sendServerActionType(ServerActionType.CHANGE_WIND, [wind.name.encode()])
+					client.sendServerActionTypeMessage(ServerActionType.CHANGE_WIND, [wind.name.encode()])
 					client.wind = wind
 		self.waitForAllClientsReceiveCard()
 		for i in range(4):
@@ -55,6 +55,14 @@ class GameManager:
 		while True:
 			for client in self.clients:
 				self.sendRandomCards(client, 1, ServerActionType.SEND_CARD)
+				while CardType.FLOWER in client.cards:
+					sleep(1)
+					self.flowerReplacement(client, ServerActionType.FLOWER_REPLACEMENT)
+					for client2 in self.clients:
+						client2.sendServerActionTypeMessage(ServerActionType.FLOWER_COUNT, [client.wind.name.encode(), client.flowerCount.to_bytes()])
+				client.sendServerActionTypeMessage(ServerActionType.WAIT_DISCARD, [])
+				client.waitForClientDiscard()
+				sleep(1)
 
 	def sendRandomCards(self, client: Client, cardCount: int, serverActionType: ServerActionType, waitForClientReceive=True):
 		cardTypes = list[CardType]()
@@ -78,10 +86,9 @@ class GameManager:
 			if noFlower:
 				for client in clients:
 					for client2 in clients:
-						client.sendServerActionType(ServerActionType.FLOWER_COUNT, [client2.wind.name.encode(), client2.flowerCount.to_bytes()])
+						client.sendServerActionTypeMessage(ServerActionType.START_FLOWER_COUNT, [client2.wind.name.encode(), client2.flowerCount.to_bytes()])
 				self.waitForAllClientsReceiveFlowerCount()
 				return
-			self.waitForAllClientsReceiveCard()
 
 	def flowerReplacement(self, client: Client, serverActionType: ServerActionType, waitForClientReceive=True):
 		newCardTypes = list[CardType]()
@@ -104,7 +111,7 @@ class GameManager:
 		cardBytesList = []
 		for cardType in cardTypeList:
 			cardBytesList.append(self.cardTypeToBytes(cardType))
-		client.sendServerActionType(serverActionType, cardBytesList)
+		client.sendServerActionTypeMessage(serverActionType, cardBytesList)
 
 	def waitForAllClientsReceiveCard(self):
 		print("waiting for all clients received cards")

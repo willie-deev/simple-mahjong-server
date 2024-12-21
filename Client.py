@@ -22,6 +22,7 @@ class Client:
 		self.cards = list[CardType]()
 		self.clientReceivedCardEvent = threading.Event()
 		self.clientReceivedFlowerCount = threading.Event()
+		self.clientDiscardEvent = threading.Event()
 		self.flowerCount = 0
 		self.wind = None
 
@@ -34,6 +35,11 @@ class Client:
 		if not self.clientReceivedFlowerCount.wait(timeout):
 			raise Exception("client received flower count timeout")
 		self.clientReceivedFlowerCount.clear()
+
+	def waitForClientDiscard(self, timeout=10):
+		if not self.clientDiscardEvent.wait(timeout):
+			raise Exception("client discard event timeout")
+		self.clientDiscardEvent.clear()
 
 	def getCardTypes(self) -> list[CardType]:
 		return self.cards
@@ -79,7 +85,7 @@ class Client:
 				case ClientActionType.RECEIVED_FLOWER_COUNT:
 					self.clientReceivedFlowerCount.set()
 
-	def sendServerActionType(self, serverActionType: ServerActionType, messages: list):
+	def sendServerActionTypeMessage(self, serverActionType: ServerActionType, messages: list):
 		newList = [serverActionType.name.encode()] + messages
 		self.sendEncryptedByteList(newList)
 
