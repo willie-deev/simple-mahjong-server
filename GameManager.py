@@ -7,7 +7,7 @@ import Client
 from CardType import CardType
 from ConfigHandler import DefaultConfig
 from ServerActionType import ServerActionType
-from Winds import Winds
+from Wind import Wind
 
 
 class GameManager:
@@ -35,7 +35,7 @@ class GameManager:
 			self.randomSortPlayer(self.clients)
 		for i in range(4):
 			client = self.clients[i]
-			for wind in Winds:
+			for wind in Wind:
 				if wind.value == i:
 					client.sendServerActionTypeMessage(ServerActionType.CHANGE_WIND, [wind.name.encode()])
 					client.wind = wind
@@ -54,14 +54,18 @@ class GameManager:
 	def mainGame(self):
 		while True:
 			for client in self.clients:
-				self.sendRandomCards(client, 1, ServerActionType.SEND_CARD)
+				sentCard = self.sendRandomCards(client, 1, ServerActionType.SEND_CARD)[0]
 				while CardType.FLOWER in client.cards:
 					sleep(1)
-					self.flowerReplacement(client, ServerActionType.FLOWER_REPLACEMENT)
+					sentCard = self.flowerReplacement(client, ServerActionType.FLOWER_REPLACEMENT)[0]
 					for client2 in self.clients:
 						client2.sendServerActionTypeMessage(ServerActionType.FLOWER_COUNT, [client.wind.name.encode(), client.flowerCount.to_bytes()])
 				client.sendServerActionTypeMessage(ServerActionType.WAIT_DISCARD, [])
-				client.waitForClientDiscard()
+				discardedCardType = client.waitForClientDiscard()
+				if discardedCardType is None:
+					discardedCardType = sentCard
+				for client2 in self.clients:
+					client2.sendServerActionTypeMessage(ServerActionType.CLIENT_DISCARDED, [client.wind.name.encode(), discardedCardType.name.encode()])
 				sleep(1)
 
 	def sendRandomCards(self, client: Client, cardCount: int, serverActionType: ServerActionType, waitForClientReceive=True):
@@ -73,6 +77,7 @@ class GameManager:
 		client.addCardTypes(cardTypes)
 		if waitForClientReceive:
 			client.waitForClientReceivedCard()
+		return cardTypes
 
 	def allFlowerReplacement(self, clients: list[Client]):
 		while True:
@@ -103,6 +108,7 @@ class GameManager:
 		client.addCardTypes(newCardTypes)
 		if waitForClientReceive:
 			client.waitForClientReceivedCard()
+		return newCardTypes
 
 	def cardTypeToBytes(self, cardType: CardType):
 		return cardType.name.encode()
@@ -125,6 +131,11 @@ class GameManager:
 
 	def getCardTypeByNumber(self, number: int):
 		return self.cardNumberTypeList[number]
+
+	def getCardTypeByName(self, name: str):
+		for card in CardType:
+			if card.name == name:
+				return card
 
 	def takeOneCard(self) -> int:
 		return self.cards.pop()

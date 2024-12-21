@@ -1,4 +1,5 @@
 import threading
+from typing import Optional
 
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
@@ -7,6 +8,7 @@ from Crypto.Random import get_random_bytes
 from CardType import CardType
 from ClientActionType import ClientActionType
 from ServerActionType import ServerActionType
+from Wind import Wind
 
 
 class Client:
@@ -24,7 +26,8 @@ class Client:
 		self.clientReceivedFlowerCount = threading.Event()
 		self.clientDiscardEvent = threading.Event()
 		self.flowerCount = 0
-		self.wind = None
+		self.wind: Optional[Wind] = None
+		self.discardedCard: Optional[CardType] = None
 
 	def waitForClientReceivedCard(self, timeout=1):
 		if not self.clientReceivedCardEvent.wait(timeout):
@@ -37,9 +40,11 @@ class Client:
 		self.clientReceivedFlowerCount.clear()
 
 	def waitForClientDiscard(self, timeout=10):
-		if not self.clientDiscardEvent.wait(timeout):
-			raise Exception("client discard event timeout")
+		received = self.clientDiscardEvent.wait(timeout)
 		self.clientDiscardEvent.clear()
+		if received:
+			return self.discardedCard
+		return None
 
 	def getCardTypes(self) -> list[CardType]:
 		return self.cards
@@ -78,12 +83,18 @@ class Client:
 			for actionType in ClientActionType:
 				if receivedList[0].decode() == actionType.name:
 					clientActionType = actionType
+			print(receivedList)
+			receivedList = receivedList[1:]
 			match clientActionType:
 				case ClientActionType.RECEIVED_CARDS:
 					self.clientReceivedCardEvent.set()
-					print(receivedList)
 				case ClientActionType.RECEIVED_FLOWER_COUNT:
 					self.clientReceivedFlowerCount.set()
+				case ClientActionType.DISCARD:
+					cardTypeName = receivedList[0].decode()
+					cardType = self.playerManager.main.gameManager.getCardTypeByName(cardTypeName)
+					self.discardedCard = cardType
+					self.clientDiscardEvent.set()
 
 	def sendServerActionTypeMessage(self, serverActionType: ServerActionType, messages: list):
 		newList = [serverActionType.name.encode()] + messages
