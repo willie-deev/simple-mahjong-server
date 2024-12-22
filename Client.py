@@ -22,22 +22,26 @@ class Client:
 		self.thread = threading.Thread(target=self.recvThread)
 		self.thread.start()
 		self.cards = list[CardType]()
+
 		self.clientReceivedCardEvent = threading.Event()
-		self.clientReceivedFlowerCount = threading.Event()
+		self.clientReceivedDiscardEvent = threading.Event()
 		self.clientDiscardEvent = threading.Event()
-		self.flowerCount = 0
+		self.clientReceivedOtherPlayerGotCardEvent = threading.Event()
+
+		self.clientCanAction = None
+
 		self.wind: Optional[Wind] = None
 		self.discardedCard: Optional[CardType] = None
+
+	def waitForClientReceivedOtherPlayerGotCard(self, timeout=1):
+		if not self.clientReceivedOtherPlayerGotCardEvent.wait(timeout):
+			raise Exception("client received other plater got card event timeout")
+		self.clientReceivedOtherPlayerGotCardEvent.clear()
 
 	def waitForClientReceivedCard(self, timeout=1):
 		if not self.clientReceivedCardEvent.wait(timeout):
 			raise Exception("client received card event timeout")
 		self.clientReceivedCardEvent.clear()
-
-	def waitForClientReceivedFlowerCount(self, timeout=1):
-		if not self.clientReceivedFlowerCount.wait(timeout):
-			raise Exception("client received flower count timeout")
-		self.clientReceivedFlowerCount.clear()
 
 	def waitForClientDiscard(self, timeout=10):
 		received = self.clientDiscardEvent.wait(timeout)
@@ -45,6 +49,12 @@ class Client:
 		if received:
 			return self.discardedCard
 		return None
+
+	def waitForClientReceivedDiscard(self, timeout=1):
+		if not self.clientReceivedDiscardEvent.wait(timeout):
+			raise Exception("client received discard event timeout")
+		self.clientReceivedDiscardEvent.clear()
+		return self.clientCanAction
 
 	def getCardTypes(self) -> list[CardType]:
 		return self.cards
@@ -57,8 +67,6 @@ class Client:
 			self.addCardType(card)
 
 	def removeCardType(self, card: CardType):
-		if card == CardType.FLOWER:
-			self.flowerCount += 1
 		self.cards.remove(card)
 
 	def removeCardTypes(self, cards: list[CardType]):
@@ -83,18 +91,22 @@ class Client:
 			for actionType in ClientActionType:
 				if receivedList[0].decode() == actionType.name:
 					clientActionType = actionType
-			print(receivedList)
+			print(self.wind, " receivedList: ", receivedList)
 			receivedList = receivedList[1:]
 			match clientActionType:
 				case ClientActionType.RECEIVED_CARDS:
 					self.clientReceivedCardEvent.set()
-				case ClientActionType.RECEIVED_FLOWER_COUNT:
-					self.clientReceivedFlowerCount.set()
 				case ClientActionType.DISCARD:
 					cardTypeName = receivedList[0].decode()
 					cardType = self.playerManager.main.gameManager.getCardTypeByName(cardTypeName)
 					self.discardedCard = cardType
 					self.clientDiscardEvent.set()
+					print(self.wind, " discarded: ", " ", cardTypeName)
+				case ClientActionType.RECEIVED_DISCARD_ACTION:
+					self.clientCanAction: bool = receivedList[0].decode()
+					self.clientReceivedDiscardEvent.set()
+				case ClientActionType.RECEIVED_OTHER_PLAYER_GOT_CARD:
+					self.clientReceivedOtherPlayerGotCardEvent.set()
 
 	def sendServerActionTypeMessage(self, serverActionType: ServerActionType, messages: list):
 		newList = [serverActionType.name.encode()] + messages
@@ -111,18 +123,17 @@ class Client:
 
 	def sendEncryptedByteList(self, messages: list):
 		dataLength = self.encryptMessage(int.to_bytes(len(messages)))
-		self.socket.sendall(dataLength[0])
-		self.socket.sendall(dataLength[1])
-
+		sendDatas: bytes = dataLength[0] + dataLength[1]
 		for data in messages:
 			encryptedData = self.encryptMessage(data)
-			self.socket.sendall(encryptedData[0])
-			self.socket.sendall(encryptedData[1])
+			sendDatas += encryptedData[0] + encryptedData[1]
+		self.socket.sendall(sendDatas)
 
 	def receiveEncryptedMessages(self) -> list:
 		iv = self.receiveData(256)
 		message = self.receiveData(256)
 		dataLength = self.decryptReceivedMessage(iv, message)
+		# print(self.wind, " :dataLength: ", dataLength)
 		messageList = list()
 		for i in range(int.from_bytes(dataLength)):
 			iv = self.receiveData(256)
@@ -142,14 +153,19 @@ class Client:
 		decryptedIV = self.playerManager.main.keyUtils.decryptRsa(iv)
 		aesCipher = AES.new(self.clientAesKey, AES.MODE_CFB, iv=decryptedIV)
 		rsaDecrypted = self.playerManager.main.keyUtils.decryptRsa(message)
+		# print("len(decryptedIV), \" \", len(rsaDecrypted): ", len(decryptedIV), " ", len(rsaDecrypted))
 		return aesCipher.decrypt(rsaDecrypted)
 
 	def receiveData(self, receiveByteCount: int):
-		receivedData = self.socket.recv(receiveByteCount)
-		while len(receivedData) < receiveByteCount:
-			if not receivedData:
-				print('server disconnected')
-				self.socket.close()
-				return
-			receivedData += self.socket.recv(receiveByteCount - len(receivedData))
-		return receivedData
+		try:
+			receivedData = self.socket.recv(receiveByteCount)
+			while len(receivedData) < receiveByteCount:
+				if not receivedData:
+					print('server disconnected')
+					self.socket.close()
+					return
+				receivedData += self.socket.recv(receiveByteCount - len(receivedData))
+			return receivedData
+		except Exception as e:
+			self.socket.close()
+			print(e)
