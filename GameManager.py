@@ -79,15 +79,18 @@ class GameManager:
 		allClientCardActionTypes: dict[Client, CardActionType] = {}
 		allClientCardActionCards: dict[Client, list[CardType]] = {}
 		for client in self.clients:
-			if client.waitForClientCardActionEvent() is None:
+			cardActionTypeCardsTuple = client.waitForClientCardActionEvent()
+			if cardActionTypeCardsTuple is None:
 				continue
-			cardActionType, cardActionCards = client.waitForClientCardActionEvent()
+			cardActionType, cardActionCards = cardActionTypeCardsTuple[0], cardActionTypeCardsTuple[1]
 			allClientCardActionTypes[client] = cardActionType
 			allClientCardActionCards[client] = cardActionCards
+			print("cardActionType: ", cardActionType, " cardActionCards: ", cardActionCards)
+		print("allClientCardActionTypes: ", allClientCardActionTypes, " allClientCardActionCards: ", allClientCardActionCards)
 		actionClient: Client = None
 		cardActionType: CardActionType | None = None
-		if CardActionType.CHOW in allClientCardActionTypes:
-			for testClient, testCardActionType in allClientCardActionTypes:
+		if CardActionType.CHOW in allClientCardActionTypes.values():
+			for testClient, testCardActionType in allClientCardActionTypes.items():
 				if testCardActionType == CardActionType.CHOW:
 					if discardedClient.wind.value - testClient.wind.value == -1 or discardedClient.wind.value - testClient.wind.value == 3:
 						testCards: list[CardType] = [discardedCardType] + allClientCardActionCards[testClient]
@@ -95,20 +98,39 @@ class GameManager:
 							actionClient = testClient
 							cardActionType = CardActionType.CHOW
 							break
-		if CardActionType.PUNG in allClientCardActionTypes:
-			for testClient, testCardActionType in allClientCardActionTypes:
+		if CardActionType.PUNG in allClientCardActionTypes.values():
+			for testClient, testCardActionType in allClientCardActionTypes.items():
 				if testCardActionType == CardActionType.PUNG and testClient.cards.count(discardedCardType) >= 2:
 					actionClient = testClient
 					cardActionType = CardActionType.PUNG
 					break
-		if CardActionType.KONG in allClientCardActionTypes:
-			for testClient, testCardActionType in allClientCardActionTypes:
+		if CardActionType.KONG in allClientCardActionTypes.values():
+			for testClient, testCardActionType in allClientCardActionTypes.items():
 				if testCardActionType == CardActionType.KONG and testClient.cards.count(discardedCardType) == 3:
 					actionClient = testClient
 					cardActionType = CardActionType.KONG
 					break
+		print("actionClient: ", actionClient, " cardActionType: ", cardActionType)
 		if actionClient is None or cardActionType is None:
 			return
+		print(actionClient.wind, " performed: ", cardActionType, " cards: ", allClientCardActionCards[actionClient])
+		if allClientCardActionTypes[actionClient] == CardActionType.CHOW:
+			allClientCardActionCards[actionClient] = [
+				allClientCardActionCards[actionClient][0],
+				discardedCardType,
+				allClientCardActionCards[actionClient][1]
+			]
+		self.sendPlayerPerformedCardAction(actionClient, allClientCardActionTypes[actionClient], allClientCardActionCards[actionClient])
+
+	def sendPlayerPerformedCardAction(self, performClient: Client, actionType: CardActionType, cardTypes: list[CardType]):
+		performedWindBytes = performClient.wind.name.encode()
+		actionTypeBytes = actionType.name.encode()
+		dataList = [performedWindBytes, actionTypeBytes]
+		for card in cardTypes:
+			dataList.append(card.name.encode())
+
+		for client in self.clients:
+			client.sendServerActionTypeMessage(ServerActionType.CLIENT_PERFORMED_CARD_ACTION, dataList)
 
 	def sendOtherPlayerGotCard(self, gotCardClient: Client):
 		for client in self.clients:
@@ -190,11 +212,6 @@ class GameManager:
 	def getCardTypeByNumber(self, number: int):
 		return self.cardNumberTypeList[number]
 
-	def getCardTypeByName(self, name: str):
-		for card in CardType:
-			if card.name == name:
-				return card
-
 	def takeOneCard(self) -> int:
 		return self.cards.pop()
 
@@ -203,3 +220,13 @@ class GameManager:
 
 	def randomSortPlayer(self, players):
 		self.random.shuffle(players)
+
+def getCardActionTypeByName(name: str):
+	for cardActionType in CardActionType:
+		if cardActionType.name == name:
+			return cardActionType
+
+def getCardTypeByName(name: str):
+		for card in CardType:
+			if card.name == name:
+				return card

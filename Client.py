@@ -35,11 +35,12 @@ class Client:
 		self.discardedCard: CardType | None = None
 		self.choseCardActionType: CardActionType | None  = None
 		self.choseCardActionCards = None
+		self.haveAction = False
 
 	def waitForClientCardActionEvent(self, timeout=10):
 		received = self.clientActionedEvent.wait(timeout)
 		self.clientActionedEvent.clear()
-		if received:
+		if received and self.haveAction is True:
 			return self.choseCardActionType, self.choseCardActionCards
 		return None
 
@@ -108,7 +109,8 @@ class Client:
 					self.clientReceivedCardEvent.set()
 				case ClientActionType.DISCARD:
 					cardTypeName = receivedList[0].decode()
-					cardType = self.playerManager.main.gameManager.getCardTypeByName(cardTypeName)
+					import GameManager
+					cardType = GameManager.getCardTypeByName(cardTypeName)
 					self.discardedCard = cardType
 					self.clientDiscardEvent.set()
 					print(self.wind, " discarded: ", " ", cardTypeName)
@@ -118,6 +120,20 @@ class Client:
 					self.clientReceivedDiscardEvent.set()
 				case ClientActionType.RECEIVED_OTHER_PLAYER_GOT_CARD:
 					self.clientReceivedOtherPlayerGotCardEvent.set()
+				case ClientActionType.PERFORM_CARD_ACTION:
+					if len(receivedList) != 0:
+						import GameManager
+						cardActionType = GameManager.getCardActionTypeByName(receivedList[0].decode())
+						receivedList = receivedList[1:]
+						cardTypes: list[CardType] = []
+						for cardNameBytes in receivedList:
+							cardTypes.append(GameManager.getCardTypeByName(cardNameBytes.decode()))
+						self.choseCardActionType = cardActionType
+						self.choseCardActionCards = cardTypes
+						self.haveAction = True
+					else:
+						self.haveAction = False
+					self.clientActionedEvent.set()
 
 	def sendServerActionTypeMessage(self, serverActionType: ServerActionType, messages: list):
 		newList = [serverActionType.name.encode()] + messages
