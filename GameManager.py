@@ -3,7 +3,9 @@ from collections import deque
 from random import Random
 from time import sleep
 
+import CardUtils
 import Client
+from CardActionType import CardActionType
 from CardType import CardType
 from ConfigHandler import DefaultConfig
 from ServerActionType import ServerActionType
@@ -12,7 +14,7 @@ from Wind import Wind
 
 class GameManager:
 	def __init__(self, main):
-		self.clients = None
+		self.clients: list[Client] = []
 		self.main = main
 		self.cards: deque[int] = deque()
 		for i in range(144):
@@ -64,10 +66,49 @@ class GameManager:
 					print("sent: ", sentCard, " to: ", client.wind, " (flower replacement)")
 				client.sendServerActionTypeMessage(ServerActionType.WAIT_DISCARD, [])
 				discardedCardType = client.waitForClientDiscard()
-				if discardedCardType is None:
+				if discardedCardType not in client.cards or discardedCardType is None:
 					discardedCardType = sentCard
-				self.sendDiscardMessage(client, discardedCardType)
+				anyClientCanAction = self.sendDiscardMessage(client, discardedCardType)
+				if anyClientCanAction is True:
+					self.handleAllClientsActions(discardedCardType, client)
 				sleep(1)
+
+	def handleAllClientsActions(self, discardedCardType: CardType, discardedClient: Client):
+		for client in self.clients:
+			client.sendServerActionTypeMessage(ServerActionType.WAIT_CARD_ACTION, [])
+		allClientCardActionTypes: dict[Client, CardActionType] = {}
+		allClientCardActionCards: dict[Client, list[CardType]] = {}
+		for client in self.clients:
+			if client.waitForClientCardActionEvent() is None:
+				continue
+			cardActionType, cardActionCards = client.waitForClientCardActionEvent()
+			allClientCardActionTypes[client] = cardActionType
+			allClientCardActionCards[client] = cardActionCards
+		actionClient: Client = None
+		cardActionType: CardActionType | None = None
+		if CardActionType.CHOW in allClientCardActionTypes:
+			for testClient, testCardActionType in allClientCardActionTypes:
+				if testCardActionType == CardActionType.CHOW:
+					if discardedClient.wind.value - testClient.wind.value == -1 or discardedClient.wind.value - testClient.wind.value == 3:
+						testCards: list[CardType] = [discardedCardType] + allClientCardActionCards[testClient]
+						if CardUtils.checkCanChow(testCards) is True:
+							actionClient = testClient
+							cardActionType = CardActionType.CHOW
+							break
+		if CardActionType.PUNG in allClientCardActionTypes:
+			for testClient, testCardActionType in allClientCardActionTypes:
+				if testCardActionType == CardActionType.PUNG and testClient.cards.count(discardedCardType) >= 2:
+					actionClient = testClient
+					cardActionType = CardActionType.PUNG
+					break
+		if CardActionType.KONG in allClientCardActionTypes:
+			for testClient, testCardActionType in allClientCardActionTypes:
+				if testCardActionType == CardActionType.KONG and testClient.cards.count(discardedCardType) == 3:
+					actionClient = testClient
+					cardActionType = CardActionType.KONG
+					break
+		if actionClient is None or cardActionType is None:
+			return
 
 	def sendOtherPlayerGotCard(self, gotCardClient: Client):
 		for client in self.clients:
@@ -108,7 +149,7 @@ class GameManager:
 			client.sendServerActionTypeMessage(ServerActionType.CLIENT_DISCARDED, [discardedClient.wind.name.encode(), cardType.name.encode()])
 		anyClientCanAction = False
 		for client in self.clients:
-			if client.waitForClientReceivedDiscard():
+			if client.waitForClientReceivedDiscard() is True:
 				anyClientCanAction = True
 		return anyClientCanAction
 
@@ -118,7 +159,7 @@ class GameManager:
 		for cardType in client.getCardTypes():
 			if cardType == CardType.FLOWER:
 				flowerCards.append(cardType)
-				newCardType = self.getCardTypeByNumber(self.takeOneCard())
+				newCardType = self.getCardTypeByNumber(self.takeOneCardFromBack())
 				newCardTypes.append(newCardType)
 		self.sendCardTypeList(client, newCardTypes, serverActionType)
 		client.removeCardTypes(flowerCards)

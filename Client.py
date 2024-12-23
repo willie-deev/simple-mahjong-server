@@ -1,10 +1,10 @@
 import threading
-from typing import Optional
 
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
+from CardActionType import CardActionType
 from CardType import CardType
 from ClientActionType import ClientActionType
 from ServerActionType import ServerActionType
@@ -21,17 +21,27 @@ class Client:
 		self.socket = _c
 		self.thread = threading.Thread(target=self.recvThread)
 		self.thread.start()
-		self.cards = list[CardType]()
+		self.cards: list[CardType] = []
 
 		self.clientReceivedCardEvent = threading.Event()
 		self.clientReceivedDiscardEvent = threading.Event()
 		self.clientDiscardEvent = threading.Event()
 		self.clientReceivedOtherPlayerGotCardEvent = threading.Event()
+		self.clientActionedEvent = threading.Event()
 
-		self.clientCanAction = None
+		self.clientCanAction: bool | None = None
 
-		self.wind: Optional[Wind] = None
-		self.discardedCard: Optional[CardType] = None
+		self.wind: Wind | None = None
+		self.discardedCard: CardType | None = None
+		self.choseCardActionType: CardActionType | None  = None
+		self.choseCardActionCards = None
+
+	def waitForClientCardActionEvent(self, timeout=10):
+		received = self.clientActionedEvent.wait(timeout)
+		self.clientActionedEvent.clear()
+		if received:
+			return self.choseCardActionType, self.choseCardActionCards
+		return None
 
 	def waitForClientReceivedOtherPlayerGotCard(self, timeout=1):
 		if not self.clientReceivedOtherPlayerGotCardEvent.wait(timeout):
@@ -103,7 +113,8 @@ class Client:
 					self.clientDiscardEvent.set()
 					print(self.wind, " discarded: ", " ", cardTypeName)
 				case ClientActionType.RECEIVED_DISCARD_ACTION:
-					self.clientCanAction: bool = receivedList[0].decode()
+					self.clientCanAction = bool.from_bytes(receivedList[0])
+					print("self.clientCanAction: ", self.clientCanAction)
 					self.clientReceivedDiscardEvent.set()
 				case ClientActionType.RECEIVED_OTHER_PLAYER_GOT_CARD:
 					self.clientReceivedOtherPlayerGotCardEvent.set()
