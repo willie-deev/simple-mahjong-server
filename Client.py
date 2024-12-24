@@ -40,8 +40,10 @@ class Client:
 	def waitForClientCardActionEvent(self, timeout=10):
 		received = self.clientActionedEvent.wait(timeout)
 		self.clientActionedEvent.clear()
-		if received and self.haveAction is True:
+		if received is True and self.haveAction is True:
 			return self.choseCardActionType, self.choseCardActionCards
+		self.choseCardActionType = None
+		self.choseCardActionCards = None
 		return None
 
 	def waitForClientReceivedOtherPlayerGotCard(self, timeout=1):

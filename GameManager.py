@@ -112,6 +112,7 @@ class GameManager:
 					break
 		print("actionClient: ", actionClient, " cardActionType: ", cardActionType)
 		if actionClient is None or cardActionType is None:
+			self.sendNoPlayerPerformedCardAction()
 			return
 		print(actionClient.wind, " performed: ", cardActionType, " cards: ", allClientCardActionCards[actionClient])
 		if allClientCardActionTypes[actionClient] == CardActionType.CHOW:
@@ -121,6 +122,10 @@ class GameManager:
 				allClientCardActionCards[actionClient][1]
 			]
 		self.sendPlayerPerformedCardAction(actionClient, allClientCardActionTypes[actionClient], allClientCardActionCards[actionClient])
+
+	def sendNoPlayerPerformedCardAction(self):
+		for client in self.clients:
+			client.sendServerActionTypeMessage(ServerActionType.CLIENT_PERFORMED_CARD_ACTION, [])
 
 	def sendPlayerPerformedCardAction(self, performClient: Client, actionType: CardActionType, cardTypes: list[CardType]):
 		performedWindBytes = performClient.wind.name.encode()
