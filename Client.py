@@ -22,12 +22,17 @@ class Client:
 		self.thread = threading.Thread(target=self.recvThread)
 		self.thread.start()
 		self.cards: list[CardType] = []
+		self.actionedCards: list[CardType] = []
 
 		self.clientReceivedCardEvent = threading.Event()
 		self.clientReceivedDiscardEvent = threading.Event()
 		self.clientDiscardEvent = threading.Event()
 		self.clientReceivedOtherPlayerGotCardEvent = threading.Event()
 		self.clientActionedEvent = threading.Event()
+		self.clientReceivedConcealedKongEvent = threading.Event()
+		self.clientReceivedPlayerReadyEvent = threading.Event()
+
+		self.waitingForClientCardActionEvent = False
 
 		self.clientCanAction: bool | None = None
 
@@ -37,8 +42,24 @@ class Client:
 		self.choseCardActionCards = None
 		self.haveAction = False
 
+		self.discardWithActionType: CardActionType | None = None
+		self.choseSelfActionCards: list[CardType] | None = None
+
+		self.ready = False
+
+	def waitClientReceivedPlayerReadyEvent(self, timeout=1):
+		if not self.clientReceivedPlayerReadyEvent.wait(timeout):
+			raise Exception("client client Received Player Ready Event event timeout")
+		self.clientReceivedPlayerReadyEvent.clear()
+
+	def waitForClientReceivedConcealedKongEvent(self, timeout=1):
+		if not self.clientReceivedConcealedKongEvent.wait(timeout):
+			raise Exception("client received other player concealed kong event timeout")
+		self.clientReceivedConcealedKongEvent.clear()
+
 	def waitForClientCardActionEvent(self, timeout=10):
 		received = self.clientActionedEvent.wait(timeout)
+		self.waitingForClientCardActionEvent = False
 		self.clientActionedEvent.clear()
 		if received is True and self.haveAction is True:
 			return self.choseCardActionType, self.choseCardActionCards
@@ -56,11 +77,11 @@ class Client:
 			raise Exception("client received card event timeout")
 		self.clientReceivedCardEvent.clear()
 
-	def waitForClientDiscard(self, timeout=10):
+	def waitForClientDiscard(self, timeout=10) -> tuple[CardType, CardActionType | None, list[CardType] | None] | None:
 		received = self.clientDiscardEvent.wait(timeout)
 		self.clientDiscardEvent.clear()
 		if received:
-			return self.discardedCard
+			return self.discardedCard, self.discardWithActionType, self.choseSelfActionCards
 		return None
 
 	def waitForClientReceivedDiscard(self, timeout=1):
@@ -114,6 +135,8 @@ class Client:
 					import GameManager
 					cardType = GameManager.getCardTypeByName(cardTypeName)
 					self.discardedCard = cardType
+					self.discardWithActionType = None
+					self.choseSelfActionCards = None
 					self.clientDiscardEvent.set()
 					print(self.wind, " discarded: ", " ", cardTypeName)
 				case ClientActionType.RECEIVED_DISCARD_ACTION:
@@ -135,7 +158,31 @@ class Client:
 						self.haveAction = True
 					else:
 						self.haveAction = False
-					self.clientActionedEvent.set()
+					if self.waitingForClientCardActionEvent is True:
+						self.clientActionedEvent.set()
+				case ClientActionType.PERFORM_SELF_CARD_ACTION:
+					import GameManager
+					self.discardWithActionType = GameManager.getCardActionTypeByName(receivedList[0].decode())
+					receivedList = receivedList[1:]
+					cardTypes: list[CardType] = []
+					for cardNameBytes in receivedList:
+						cardTypes.append(GameManager.getCardTypeByName(cardNameBytes.decode()))
+					self.choseSelfActionCards = cardTypes
+					self.discardedCard = None
+					self.clientDiscardEvent.set()
+				case ClientActionType.RECEIVED_CONCEALED_KONG:
+					self.clientReceivedConcealedKongEvent.set()
+				case ClientActionType.RECEIVED_PLAYER_READY:
+					self.clientReceivedPlayerReadyEvent.set()
+				case ClientActionType.WIN:
+					self.discardWithActionType = CardActionType.WIN
+					self.clientDiscardEvent.set()
+					self.choseCardActionType = CardActionType.WIN
+					self.choseCardActionCards = []
+					self.haveAction = True
+					if self.waitingForClientCardActionEvent is True:
+						self.clientActionedEvent.set()
+
 
 	def sendServerActionTypeMessage(self, serverActionType: ServerActionType, messages: list):
 		newList = [serverActionType.name.encode()] + messages

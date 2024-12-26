@@ -22,7 +22,30 @@ class GameManager:
 		self.seed = secrets.randbelow(2 ** 32)
 		self.random = Random(self.seed)
 		self.random.shuffle(self.cards)
+
+
+		# eastCards: list[int] = [1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21]
+		# southCards: list[int] = [1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21]
+		# westCards: list[int] = [1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21]
+		# northCards: list[int] = [1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21]
+		# for i in range(4):
+		# 	for j in range(4):
+		# 		self.cards.append(eastCards[i*4+j])
+		# 	for j in range(4):
+		# 		self.cards.append(southCards[i*4+j])
+		# 	for j in range(4):
+		# 		self.cards.append(westCards[i*4+j])
+		# 	for j in range(4):
+		# 		self.cards.append(northCards[i*4+j])
+		# self.cards.append(1)
+
+
+
+
+
 		self.cardNumberTypeList = list[CardType]()
+		self.nextClientIndex = 0
+		self.nextClientCardLocation = 1
 		for cardType in CardType:
 			if cardType.name != "FLOWER":
 				for i in range(4):
@@ -30,6 +53,7 @@ class GameManager:
 			else:
 				for i in range(8):
 					self.cardNumberTypeList.append(cardType)
+		self.anyClientWon = False
 
 	def gameInitialize(self):
 		self.clients: list[Client] = self.main.playerManager.clients
@@ -54,9 +78,15 @@ class GameManager:
 		print("end")
 
 	def mainGame(self):
+		self.nextClientIndex = 0
+		self.nextClientCardLocation = 1
 		while True:
-			for client in self.clients:
-				sentCard = self.sendRandomCards(client, 1, ServerActionType.SEND_CARD)[0]
+			client = self.clients[self.nextClientIndex]
+			if self.nextClientCardLocation == 1 or self.nextClientCardLocation == -1:
+				if self.nextClientCardLocation == 1:
+					sentCard = self.sendRandomCards(client, 1, ServerActionType.SEND_CARD)[0]
+				else:
+					sentCard = self.sendRandomCards(client, 1, ServerActionType.SEND_CARD, fromBack=True)[0]
 				self.sendOtherPlayerGotCard(client)
 				print("sent: ", sentCard, " to: ", client.wind)
 				while CardType.FLOWER in client.cards:
@@ -64,17 +94,85 @@ class GameManager:
 					self.sendDiscardMessage(client, CardType.FLOWER)
 					sentCard = self.flowerReplacement(client, ServerActionType.FLOWER_REPLACEMENT)[0]
 					print("sent: ", sentCard, " to: ", client.wind, " (flower replacement)")
+			while True:
+				print("wait client discard")
+				# if client.ready is True:
+				# 	sleep(1)
+				# 	discardedCardType = None
+				# 	break
 				client.sendServerActionTypeMessage(ServerActionType.WAIT_DISCARD, [])
-				discardedCardType = client.waitForClientDiscard()
-				if discardedCardType not in client.cards or discardedCardType is None:
+				result = client.waitForClientDiscard()
+				if result is not None:
+					discardedCardType = result[0]
+					selfCardActionType: CardActionType = result[1]
+					if selfCardActionType is not None:
+						selfCardActionCards: list[CardType] = result[2]
+						if selfCardActionType == CardActionType.CONCEALED_KONG:
+							if selfCardActionType == CardActionType.CONCEALED_KONG:
+								for i in range(4):
+									client.cards.remove(selfCardActionCards[0])
+									client.actionedCards.append(selfCardActionCards[0])
+								self.clientConcealedKong(client)
+								sentCard = self.sendRandomCards(client, 1, ServerActionType.SEND_CARD, fromBack=True)[0]
+								while CardType.FLOWER in client.cards:
+									sleep(1)
+									self.sendDiscardMessage(client, CardType.FLOWER)
+									sentCard = self.flowerReplacement(client, ServerActionType.FLOWER_REPLACEMENT)[0]
+									print("sent: ", sentCard, " to: ", client.wind, " (flower replacement)")
+						elif selfCardActionType == CardActionType.READY:
+							testCards: list[CardType] = client.cards[:]
+							print("discardedCardType: ", selfCardActionCards[0])
+							testCards.remove(selfCardActionCards[0])
+							print(CardUtils.calCanReady(testCards))
+							testCards.sort(key=lambda v: v.value)
+							print(testCards)
+							if CardUtils.calCanReady(testCards) == 1:
+								discardedCardType = selfCardActionCards[0]
+								self.clientReady(client)
+								client.ready = True
+								break
+						elif selfCardActionType == CardActionType.WIN:
+							testCards: list[CardType] = client.cards[:]
+							testCards.sort(key=lambda v: v.value)
+							print("CardUtils.calCanWin(testCards): ", CardUtils.calCanWin(testCards))
+							self.clientWon()
+							return
+					else:
+						break
+				else:
+					discardedCardType = None
+					break
+			if discardedCardType not in client.cards or discardedCardType is None:
+				if self.nextClientCardLocation == 1 or self.nextClientCardLocation == -1:
 					discardedCardType = sentCard
-				anyClientCanAction = self.sendDiscardMessage(client, discardedCardType)
-				if anyClientCanAction is True:
-					self.handleAllClientsActions(discardedCardType, client)
-				sleep(1)
+				else:
+					discardedCardType = client.cards[-1]
+			anyClientCanAction = self.sendDiscardMessage(client, discardedCardType)
+			client.removeCardType(discardedCardType)
+			if anyClientCanAction is True:
+				if self.handleAllClientsActions(discardedCardType, client) is True:
+					continue
+			self.nextClientIndex += 1
+			if self.nextClientIndex >= len(self.clients):
+				self.nextClientIndex = 0
+			self.nextClientCardLocation = 1
+			sleep(1)
+
+	def clientReady(self, readyClient: Client):
+		for client in self.clients:
+			client.sendServerActionTypeMessage(ServerActionType.PLAYER_READY, [readyClient.wind.name.encode()])
+		for client in self.clients:
+			client.waitClientReceivedPlayerReadyEvent()
+
+	def clientConcealedKong(self, concealedKongClient: Client):
+		for client in self.clients:
+			client.sendServerActionTypeMessage(ServerActionType.CLIENT_CONCEALED_KONG, [concealedKongClient.wind.name.encode()])
+		for client in self.clients:
+			client.waitForClientReceivedConcealedKongEvent()
 
 	def handleAllClientsActions(self, discardedCardType: CardType, discardedClient: Client):
 		for client in self.clients:
+			client.waitingForClientCardActionEvent = True
 			client.sendServerActionTypeMessage(ServerActionType.WAIT_CARD_ACTION, [])
 		allClientCardActionTypes: dict[Client, CardActionType] = {}
 		allClientCardActionCards: dict[Client, list[CardType]] = {}
@@ -110,18 +208,74 @@ class GameManager:
 					actionClient = testClient
 					cardActionType = CardActionType.KONG
 					break
+		if CardActionType.WIN in allClientCardActionTypes.values():
+			for testClient, testCardActionType in allClientCardActionTypes.items():
+				if testCardActionType == CardActionType.WIN:
+					testCards: list[CardType] = testClient.cards[:]
+					testCards.append(discardedCardType)
+					testCards.sort(key=lambda card: card.value)
+					print("CardUtils.calCanWin(testCards): ", CardUtils.calCanWin(testCards))
+					if CardUtils.calCanWin(testCards) is True:
+						actionClient = testClient
+						cardActionType = CardActionType.WIN
+						self.anyClientWon = True
 		print("actionClient: ", actionClient, " cardActionType: ", cardActionType)
 		if actionClient is None or cardActionType is None:
 			self.sendNoPlayerPerformedCardAction()
 			return
 		print(actionClient.wind, " performed: ", cardActionType, " cards: ", allClientCardActionCards[actionClient])
-		if allClientCardActionTypes[actionClient] == CardActionType.CHOW:
-			allClientCardActionCards[actionClient] = [
-				allClientCardActionCards[actionClient][0],
+		cardActionType = allClientCardActionTypes[actionClient]
+		cardActionCards = allClientCardActionCards[actionClient]
+		if cardActionType == CardActionType.CHOW:
+			actionClient.cards.remove(cardActionCards[0])
+			actionClient.cards.remove(cardActionCards[1])
+			actionClient.actionedCards.append(cardActionCards[0])
+			actionClient.actionedCards.append(discardedCardType)
+			actionClient.actionedCards.append(cardActionCards[1])
+			cardActionCards = [
+				cardActionCards[0],
 				discardedCardType,
-				allClientCardActionCards[actionClient][1]
+				cardActionCards[1]
 			]
-		self.sendPlayerPerformedCardAction(actionClient, allClientCardActionTypes[actionClient], allClientCardActionCards[actionClient])
+			self.nextClientCardLocation = 0
+		if cardActionType == CardActionType.PUNG:
+			actionClient.cards.remove(cardActionCards[0])
+			actionClient.cards.remove(cardActionCards[0])
+			actionClient.actionedCards.append(cardActionCards[0])
+			actionClient.actionedCards.append(cardActionCards[0])
+			actionClient.actionedCards.append(cardActionCards[0])
+			cardActionCards = [
+				cardActionCards[0],
+				cardActionCards[0],
+				cardActionCards[0]
+			]
+			self.nextClientCardLocation = 0
+		if cardActionType == CardActionType.KONG:
+			actionClient.cards.remove(cardActionCards[0])
+			actionClient.cards.remove(cardActionCards[0])
+			actionClient.cards.remove(cardActionCards[0])
+			actionClient.actionedCards.append(cardActionCards[0])
+			actionClient.actionedCards.append(cardActionCards[0])
+			actionClient.actionedCards.append(cardActionCards[0])
+			actionClient.actionedCards.append(cardActionCards[0])
+			cardActionCards = [
+				cardActionCards[0],
+				cardActionCards[0],
+				cardActionCards[0],
+				cardActionCards[0]
+			]
+			self.nextClientCardLocation = -1
+		self.nextClientIndex = self.clients.index(actionClient)
+		self.sendPlayerPerformedCardAction(actionClient, cardActionType, cardActionCards)
+		return True
+	def clientWon(self):
+		for client in self.clients:
+			for client2 in self.clients:
+				client2: Client = client2
+				data: list[bytes] = [client.wind.name.encode()]
+				for card in client.cards:
+					data.append(card.name.encode())
+				client2.sendServerActionTypeMessage(ServerActionType.GAME_OVER, data)
 
 	def sendNoPlayerPerformedCardAction(self):
 		for client in self.clients:
@@ -145,10 +299,13 @@ class GameManager:
 			if gotCardClient != client:
 				client.waitForClientReceivedOtherPlayerGotCard()
 
-	def sendRandomCards(self, client: Client, cardCount: int, serverActionType: ServerActionType, waitForClientReceive=True):
+	def sendRandomCards(self, client: Client, cardCount: int, serverActionType: ServerActionType, waitForClientReceive=True, fromBack = False):
 		cardTypes = list[CardType]()
 		for k in range(cardCount):
-			cardType = self.getCardTypeByNumber(self.takeOneCard())
+			if fromBack is True:
+				cardType = self.getCardTypeByNumber(self.takeOneCardFromBack())
+			else:
+				cardType = self.getCardTypeByNumber(self.takeOneCard())
 			cardTypes.append(cardType)
 		self.sendCardTypeList(client, cardTypes, serverActionType)
 		client.addCardTypes(cardTypes)

@@ -7,4 +7,5 @@ class CardActionType(Enum):
 	PUNG = 2,
 	KONG = 3,
 	READY = 4,
-	WIN = 5
+	WIN = 5,
+	CONCEALED_KONG = 6
