@@ -226,7 +226,9 @@ def calCanReady(cardTypes: list[CardType]):
 	if cantWinCount == 0 and len(pairList) == 1:
 		return 2
 	if (cantWinCount == 1 and len(pairList) == 0) or (len(pairList) == 2 and cantWinCount == 0):
-		return 1
+		if calOneTypeCanReady(cantWinList) is True:
+			return 1
+		return 0
 	if cantWinCount == 1 and len(pairList) == 1:
 		if calOneTypeCanReady(cantWinList) is True:
 			return 1

@@ -96,12 +96,12 @@ class GameManager:
 					print("sent: ", sentCard, " to: ", client.wind, " (flower replacement)")
 			while True:
 				print("wait client discard")
-				# if client.ready is True:
-				# 	sleep(1)
-				# 	discardedCardType = None
-				# 	break
 				client.sendServerActionTypeMessage(ServerActionType.WAIT_DISCARD, [])
-				result = client.waitForClientDiscard()
+				if client.ready is True:
+					sleep(1)
+					result = None
+				else:
+					result = client.waitForClientDiscard()
 				if result is not None:
 					discardedCardType = result[0]
 					selfCardActionType: CardActionType = result[1]
